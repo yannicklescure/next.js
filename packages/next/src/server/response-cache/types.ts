@@ -21,12 +21,25 @@ export interface ResponseCacheBase {
       /**
        * True if this is a fallback request.
        */
-      isFallback: boolean
+      isFallback?: boolean
 
       /**
        * True if the route is enabled for PPR.
        */
       isRoutePPREnabled?: boolean
+
+      /**
+       * When true, this indicates that the cache miss should return null
+       * instead of generating a new response using the passed response
+       * generator.
+       */
+      whenCacheMissReturnNull?: boolean
+
+      /**
+       * When true, this indicates that if the cache entry is stale, it should
+       * not be revalidated.
+       */
+      whenStaleDoNotRevalidate?: boolean
     }
   ): Promise<ResponseCacheEntry | null>
 }

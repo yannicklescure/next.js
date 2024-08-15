@@ -41,6 +41,7 @@ export async function exportAppPage(
   path: string,
   pathname: string,
   query: NextParsedUrlQuery,
+  unknownRouteParams: ReadonlySet<string> | undefined,
   renderOpts: RenderOpts,
   htmlFilepath: string,
   debugOutput: boolean,
@@ -61,6 +62,7 @@ export async function exportAppPage(
       new NodeNextResponse(res),
       pathname,
       query,
+      unknownRouteParams,
       renderOpts
     )
 
@@ -98,30 +100,37 @@ export async function exportAppPage(
 
       return { revalidate: 0, fetchMetrics }
     }
+
     // If page data isn't available, it means that the page couldn't be rendered
-    // properly.
-    else if (!flightData) {
+    // properly so long as we don't have unknown route params. When a route doesn't
+    // have unknown route params, there will not be any flight data.
+    const hasUnknownRouteParams =
+      unknownRouteParams && unknownRouteParams.size > 0
+    if (!flightData && !hasUnknownRouteParams) {
       throw new Error(`Invariant: failed to get page data for ${path}`)
     }
-    // If PPR is enabled, we want to emit a prefetch rsc file for the page
-    // instead of the standard rsc. This is because the standard rsc will
-    // contain the dynamic data. We do this if any routes have PPR enabled so
-    // that the cache read/write is the same.
-    else if (renderOpts.experimental.isRoutePPREnabled) {
-      // If PPR is enabled, we should emit the flight data as the prefetch
-      // payload.
-      await fileWriter(
-        ExportedAppPageFiles.PREFETCH_FLIGHT,
-        htmlFilepath.replace(/\.html$/, RSC_PREFETCH_SUFFIX),
-        flightData
-      )
-    } else {
-      // Writing the RSC payload to a file if we don't have PPR enabled.
-      await fileWriter(
-        ExportedAppPageFiles.FLIGHT,
-        htmlFilepath.replace(/\.html$/, RSC_SUFFIX),
-        flightData
-      )
+
+    if (flightData) {
+      // If PPR is enabled, we want to emit a prefetch rsc file for the page
+      // instead of the standard rsc. This is because the standard rsc will
+      // contain the dynamic data. We do this if any routes have PPR enabled so
+      // that the cache read/write is the same.
+      if (renderOpts.experimental.isRoutePPREnabled) {
+        // If PPR is enabled, we should emit the flight data as the prefetch
+        // payload.
+        await fileWriter(
+          ExportedAppPageFiles.PREFETCH_FLIGHT,
+          htmlFilepath.replace(/\.html$/, RSC_PREFETCH_SUFFIX),
+          flightData
+        )
+      } else {
+        // Writing the RSC payload to a file if we don't have PPR enabled.
+        await fileWriter(
+          ExportedAppPageFiles.FLIGHT,
+          htmlFilepath.replace(/\.html$/, RSC_SUFFIX),
+          flightData
+        )
+      }
     }
 
     const headers: OutgoingHttpHeaders = { ...metadata.headers }

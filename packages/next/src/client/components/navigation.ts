@@ -1,5 +1,7 @@
-import { useContext, useMemo } from 'react'
 import type { FlightRouterState } from '../../server/app-render/types'
+import { isUnknownRouteParams, type Params } from './params'
+
+import { useContext, useMemo } from 'react'
 import {
   AppRouterContext,
   LayoutRouterContext,
@@ -13,7 +15,7 @@ import {
 import { getSegmentValue } from './router-reducer/reducers/get-segment-value'
 import { PAGE_SEGMENT_KEY, DEFAULT_SEGMENT_KEY } from '../../shared/lib/segment'
 import { ReadonlyURLSearchParams } from './navigation.react-server'
-import type { Params } from './params'
+import { trackDynamicDataAccessed } from '../../server/app-render/dynamic-rendering'
 
 /**
  * A [Client Component](https://nextjs.org/docs/app/building-your-application/rendering/client-components) hook
@@ -63,6 +65,26 @@ export function useSearchParams(): ReadonlyURLSearchParams {
   return readonlySearchParams
 }
 
+function trackParamsAccessed(expression: string) {
+  if (typeof window === 'undefined') {
+    // AsyncLocalStorage should not be included in the client bundle.
+    const { staticGenerationAsyncStorage } =
+      require('./static-generation-async-storage.external') as typeof import('./static-generation-async-storage.external')
+
+    const staticGenerationStore = staticGenerationAsyncStorage.getStore()
+    if (!staticGenerationStore) return
+
+    // We only want to track dynamic parameter access if the params are
+    // unknown.
+    const { unknownRouteParams } = staticGenerationStore
+    if (!isUnknownRouteParams(unknownRouteParams)) return
+
+    // If there are any unknown route parameters, then we should track this as
+    // a dynamic access.
+    trackDynamicDataAccessed(staticGenerationStore, expression)
+  }
+}
+
 /**
  * A [Client Component](https://nextjs.org/docs/app/building-your-application/rendering/client-components) hook
  * that lets you read the current URL's pathname.
@@ -82,6 +104,10 @@ export function useSearchParams(): ReadonlyURLSearchParams {
  */
 // Client components API
 export function usePathname(): string {
+  // If there are any unknown route parameters, then we should track this as
+  // a dynamic access.
+  trackParamsAccessed('usePathname()')
+
   // In the case where this is `null`, the compat types added in `next-env.d.ts`
   // will add a new overload that changes the return type to include `null`.
   return useContext(PathnameContext) as string
@@ -140,6 +166,10 @@ export function useRouter(): AppRouterInstance {
  */
 // Client components API
 export function useParams<T extends Params = Params>(): T {
+  // If there are any unknown route parameters, then we should track this as
+  // a dynamic access.
+  trackParamsAccessed('useParams()')
+
   return useContext(PathParamsContext) as T
 }
 
@@ -151,6 +181,11 @@ export function getSelectedLayoutSegmentPath(
   first = true,
   segmentPath: string[] = []
 ): string[] {
+  // If there are any unknown route parameters, then we should track this as
+  // a dynamic access.
+  // TODO: track only if one of the segments is unknown
+  trackParamsAccessed('getSelectedLayoutSegmentPath()')
+
   let node: FlightRouterState
   if (first) {
     // Use the provided parallel route key on the first parallel route
@@ -208,6 +243,11 @@ export function getSelectedLayoutSegmentPath(
 export function useSelectedLayoutSegments(
   parallelRouteKey: string = 'children'
 ): string[] {
+  // If there are any unknown route parameters, then we should track this as
+  // a dynamic access.
+  // TODO: track only if one of the segments is unknown
+  trackParamsAccessed('useSelectedLayoutSegments()')
+
   const context = useContext(LayoutRouterContext)
   // @ts-expect-error This only happens in `pages`. Type is overwritten in navigation.d.ts
   if (!context) return null
@@ -237,6 +277,11 @@ export function useSelectedLayoutSegments(
 export function useSelectedLayoutSegment(
   parallelRouteKey: string = 'children'
 ): string | null {
+  // If there are any unknown route parameters, then we should track this as
+  // a dynamic access.
+  // TODO: track only if one of the segments is unknown
+  trackParamsAccessed('useSelectedLayoutSegment()')
+
   const selectedLayoutSegments = useSelectedLayoutSegments(parallelRouteKey)
 
   if (!selectedLayoutSegments || selectedLayoutSegments.length === 0) {

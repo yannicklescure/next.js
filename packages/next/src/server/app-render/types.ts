@@ -16,16 +16,71 @@ import type { NextRequestHint } from '../web/adapter'
 import type { BaseNextRequest } from '../base-http'
 import type { IncomingMessage } from 'http'
 
-export type DynamicParamTypes =
+type KnownFallbackDynamicParamTypes =
   | 'catchall'
   | 'catchall-intercepted'
   | 'optional-catchall'
   | 'dynamic'
   | 'dynamic-intercepted'
 
-const dynamicParamTypesSchema = s.enums(['c', 'ci', 'oc', 'd', 'di'])
+type FallbackDynamicParamTypes = `fallback-${KnownFallbackDynamicParamTypes}`
+
+export type DynamicParamTypes =
+  | KnownFallbackDynamicParamTypes
+  | FallbackDynamicParamTypes
+
+export function isFallbackDynamicParamType(
+  type: DynamicParamTypes
+): type is FallbackDynamicParamTypes {
+  // We check if the type starts with `fallback-`.
+  return type.startsWith('fallback-')
+}
+
+export function createFallbackDynamicParamType(
+  type: KnownFallbackDynamicParamTypes
+): FallbackDynamicParamTypes {
+  // We add the `fallback-` prefix to the type.
+  return `fallback-${type}`
+}
+
+const dynamicParamTypesSchema = s.enums([
+  'c',
+  'ci',
+  'oc',
+  'd',
+  'di',
+  'fc',
+  'fci',
+  'foc',
+  'fd',
+  'fdi',
+])
 
 export type DynamicParamTypesShort = s.Infer<typeof dynamicParamTypesSchema>
+
+type FallbackDynamicParamTypesShort = Extract<
+  DynamicParamTypesShort,
+  `f${string}`
+>
+
+type KnownFallbackDynamicParamTypesShort = Exclude<
+  DynamicParamTypesShort,
+  `f${string}`
+>
+
+export function isFallbackDynamicParamTypeShort(
+  type: DynamicParamTypesShort
+): type is FallbackDynamicParamTypesShort {
+  // We check if the type starts with `f`.
+  return type.startsWith('f')
+}
+
+export function getFallbackDynamicParamTypeShort(
+  type: FallbackDynamicParamTypesShort
+): KnownFallbackDynamicParamTypesShort {
+  // We slice the `f` prefix from the type.
+  return type.slice(1) as KnownFallbackDynamicParamTypesShort
+}
 
 const segmentSchema = s.union([
   s.string(),
@@ -202,6 +257,7 @@ export type RenderOpts = LoadComponentsReturnType<AppPageModule> &
 export type PreloadCallbacks = (() => void)[]
 
 export type InitialRSCPayload = {
+  t: 'i'
   /** buildId */
   b: string
   /** assetPrefix */
@@ -212,6 +268,11 @@ export type InitialRSCPayload = {
   i: boolean
   /** initialFlightData */
   f: FlightDataPath[]
+  /**
+   * Unknown route parameters and their values. This is used when rendering a
+   * route that has been initially served with a unknown route parameter.
+   */
+  u: Record<string, string | string[]> | null
   /** missingSlots */
   m: Set<string> | undefined
   /** GlobalError */
@@ -222,6 +283,7 @@ export type InitialRSCPayload = {
 
 // Response from `createFromFetch` for normal rendering
 export type NavigationFlightResponse = {
+  t: 'n'
   /** buildId */
   b: string
   /** flightData */
@@ -230,6 +292,7 @@ export type NavigationFlightResponse = {
 
 // Response from `createFromFetch` for server actions. Action's flight data can be null
 export type ActionFlightResponse = {
+  t: 'a'
   /** actionResult */
   a: ActionResult
   /** buildId */

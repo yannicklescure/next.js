@@ -1835,7 +1835,6 @@ export default abstract class Server<
   }): Promise<{
     staticPaths?: string[]
     fallbackMode?: FallbackMode
-    fallbackKey: string | null
   }> {
     // Read whether or not fallback should exist from the manifest.
     const fallbackField =
@@ -1846,7 +1845,6 @@ export default abstract class Server<
       // been caught when checking disk data.
       staticPaths: undefined,
       fallbackMode: parseFallbackField(fallbackField),
-      fallbackKey: typeof fallbackField === 'string' ? fallbackField : null,
     }
   }
 
@@ -1937,7 +1935,6 @@ export default abstract class Server<
     let staticPaths: string[] | undefined
     let fallbackMode: FallbackMode | undefined
     let hasFallback = false
-    let fallbackKey: string | null
 
     const isDynamic = isDynamicRoute(components.page)
 
@@ -1954,7 +1951,6 @@ export default abstract class Server<
       staticPaths = pathsResult.staticPaths
       fallbackMode = pathsResult.fallbackMode
       hasFallback = typeof fallbackMode !== 'undefined'
-      fallbackKey = pathsResult.fallbackKey
 
       if (this.nextConfig.output === 'export') {
         const page = components.page
@@ -2737,11 +2733,9 @@ export default abstract class Server<
 
           staticPaths = pathsResult.staticPaths
           fallbackMode = pathsResult.fallbackMode
-          fallbackKey = pathsResult.fallbackKey
         } else {
           staticPaths = undefined
           fallbackMode = FallbackMode.NOT_FOUND
-          fallbackKey = null
         }
       }
 
@@ -2835,14 +2829,15 @@ export default abstract class Server<
         }
 
         if (!isNextDataRequest && !isRSCRequest) {
-          if (typeof fallbackKey === 'undefined' && isProduction) {
+          let fallbackKey: string | null = null
+          if (isProduction) {
             if (isAppPath) {
-              throw new Error(
-                'Invariant: expected fallbackKey to be defined when serving an app router fallback'
-              )
+              fallbackKey = pathname
+            } else if (locale) {
+              fallbackKey = `/${locale}${pathname}`
+            } else {
+              fallbackKey = pathname
             }
-
-            fallbackKey = locale ? `/${locale}${pathname}` : pathname
           }
 
           // We use the response cache here to handle the revalidation and
@@ -2885,13 +2880,6 @@ export default abstract class Server<
               incrementalCache,
               isRoutePPREnabled,
               isFallback: true,
-              // We only want to return null when this isn't an app page or
-              // this is not in dev mode. This prevents us from generating
-              // fallback pages again for the pages router which today doesn't
-              // support revalidation in production.
-              whenCacheMissReturnNull: isAppPath ? false : !this.renderOpts.dev,
-              // Only app pages support revalidation.
-              whenStaleDoNotRevalidate: !isAppPath,
             }
           )
 

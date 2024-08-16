@@ -59,8 +59,6 @@ export default class ResponseCache implements ResponseCacheBase {
       incrementalCache: IncrementalCache
       isRoutePPREnabled?: boolean
       isFallback?: boolean
-      whenStaleDoNotRevalidate?: boolean
-      whenCacheMissReturnNull?: boolean
     }
   ): Promise<ResponseCacheEntry | null> {
     // If there is no key for the cache, we can't possibly look this up in the
@@ -74,8 +72,6 @@ export default class ResponseCache implements ResponseCacheBase {
       isOnDemandRevalidate = false,
       isFallback = false,
       isRoutePPREnabled = false,
-      whenStaleDoNotRevalidate = false,
-      whenCacheMissReturnNull = false,
     } = context
 
     const response = await this.batcher.batch(
@@ -118,23 +114,11 @@ export default class ResponseCache implements ResponseCacheBase {
             })
             resolved = true
 
-            if (
-              !cachedResponse.isStale ||
-              context.isPrefetch ||
-              // When we've been asked not to revalidate stale responses, we
-              // should just return null instead of kicking off a revalidation.
-              whenStaleDoNotRevalidate
-            ) {
+            if (!cachedResponse.isStale || context.isPrefetch) {
               // The cached value is still valid, so we don't need
               // to update it yet.
               return null
             }
-          }
-
-          // If there's no cached response and we've been asked to return null
-          // when there's a miss, then we can just return null.
-          if (!cachedResponse && whenCacheMissReturnNull) {
-            return null
           }
 
           const cacheEntry = await responseGenerator({

@@ -738,7 +738,6 @@ export default class DevServer extends Server {
   }): Promise<{
     staticPaths?: string[]
     fallbackMode?: FallbackMode
-    fallbackKey: string | null
   }> {
     // we lazy load the staticPaths to prevent the user
     // from waiting on them for the page to load in dev mode
@@ -806,11 +805,9 @@ export default class DevServer extends Server {
         const value: {
           staticPaths: string[] | undefined
           fallbackMode: FallbackMode | undefined
-          fallbackKey: string | null
         } = {
           staticPaths: staticPaths?.map((route) => route.path),
           fallbackMode: fallback,
-          fallbackKey: null,
         }
         this.staticPathsCache.set(pathname, value)
         return value

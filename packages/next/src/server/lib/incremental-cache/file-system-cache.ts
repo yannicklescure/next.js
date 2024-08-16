@@ -464,10 +464,6 @@ export default class FileSystemCache implements CacheHandler {
           tags: ctx.tags,
         })
       )
-    } else {
-      throw new Error(
-        `Invariant: Unexpected route kind ${data.kind} in file system cache.`
-      )
     }
   }
 

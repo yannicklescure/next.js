@@ -165,6 +165,7 @@ import { getRevalidateReason } from './instrumentation/utils'
 import { RouteKind } from './route-kind'
 import type { RouteModule } from './route-modules/route-module'
 import { FallbackMode, parseFallbackField } from '../lib/fallback'
+import { toResponseCacheEntry } from './response-cache/utils'
 
 export type FindComponentsResult = {
   components: LoadComponentsReturnType
@@ -2330,17 +2331,12 @@ export default abstract class Server<
        * a render that has been postponed.
        */
       postponed: string | undefined
-
-      /**
-       * Whether or not this render is a fallback render.
-       */
-      isFallback: boolean | undefined
     }
     type Renderer = (
       context: RendererContext
     ) => Promise<ResponseCacheEntry | null>
 
-    const doRender: Renderer = async ({ postponed, isFallback }) => {
+    const doRender: Renderer = async ({ postponed }) => {
       // In development, we always want to generate dynamic HTML.
       let supportsDynamicResponse: boolean =
         // If we're in development, we always support dynamic HTML, unless it's
@@ -2504,7 +2500,6 @@ export default abstract class Server<
                   body: Buffer.from(await blob.arrayBuffer()),
                   headers,
                 },
-                isFallback: false,
                 revalidate,
               }
 
@@ -2662,11 +2657,7 @@ export default abstract class Server<
 
       // Handle `isNotFound`.
       if ('isNotFound' in metadata && metadata.isNotFound) {
-        return {
-          value: null,
-          revalidate: metadata.revalidate,
-          isFallback: false,
-        }
+        return { value: null, revalidate: metadata.revalidate }
       }
 
       // Handle `isRedirect`.
@@ -2677,7 +2668,6 @@ export default abstract class Server<
             props: metadata.pageData ?? metadata.flightData,
           } satisfies CachedRedirectValue,
           revalidate: metadata.revalidate,
-          isFallback: false,
         }
       }
 
@@ -2698,7 +2688,6 @@ export default abstract class Server<
             status: res.statusCode,
           } satisfies CachedAppPageValue,
           revalidate: metadata.revalidate,
-          isFallback,
         }
       }
 
@@ -2711,7 +2700,6 @@ export default abstract class Server<
           status: isAppPath ? res.statusCode : undefined,
         } satisfies CachedPageValue,
         revalidate: metadata.revalidate,
-        isFallback,
       }
     }
 
@@ -2838,16 +2826,26 @@ export default abstract class Server<
                 : pathname
             : null
 
-          return this.responseCache.get(
+          const response = await this.responseCache.get(
             key,
-            async () => {
+            async ({ previousCacheEntry: previousFallbackCacheEntry }) => {
+              // For the pages router, fallbacks cannot be revalidated or
+              // generated in production. In the case of a missing fallback,
+              // we return null, but if it's being revalidated, we just return
+              // the previous fallback cache entry. This preserves the previous
+              // behavior.
+              if (isProduction) {
+                if (!previousFallbackCacheEntry) {
+                  return null
+                }
+
+                return toResponseCacheEntry(previousFallbackCacheEntry)
+              }
+
               query.__nextFallback = 'true'
 
-              return doRender({
-                // We pass `undefined` as rendering a fallback isn't resumed here.
-                postponed: undefined,
-                isFallback: true,
-              })
+              // We pass `undefined` as rendering a fallback isn't resumed here.
+              return doRender({ postponed: undefined })
             },
             {
               routeKind: isAppPath ? RouteKind.APP_PAGE : RouteKind.PAGES,
@@ -2856,6 +2854,14 @@ export default abstract class Server<
               isFallback: true,
             }
           )
+
+          if (!response) return null
+
+          // Remove the revalidate from the response to prevent it from being
+          // used in the surrounding cache.
+          delete response.revalidate
+
+          return response
         }
       }
 
@@ -2866,7 +2872,6 @@ export default abstract class Server<
           !isOnDemandRevalidate && !isRevalidating && minimalPostponed
             ? minimalPostponed
             : undefined,
-        isFallback: false,
       }
 
       // When we're in minimal mode, if we're trying to debug the static shell,
@@ -2877,7 +2882,6 @@ export default abstract class Server<
       ) {
         return {
           revalidate: 1,
-          isFallback: false,
           value: {
             kind: CachedRouteKind.PAGES,
             html: RenderResult.fromStatic(''),
@@ -3257,10 +3261,7 @@ export default abstract class Server<
       // Perform the render again, but this time, provide the postponed state.
       // We don't await because we want the result to start streaming now, and
       // we've already chained the transformer's readable to the render result.
-      doRender({
-        postponed: cachedData.postponed,
-        isFallback: false,
-      })
+      doRender({ postponed: cachedData.postponed })
         .then(async (result) => {
           if (!result) {
             throw new Error('Invariant: expected a result to be returned')
